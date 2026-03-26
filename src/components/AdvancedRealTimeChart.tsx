@@ -15,9 +15,9 @@ interface AdvancedRealTimeChartProps {
 
 export function AdvancedRealTimeChart({ asset, timeframe, colors }: AdvancedRealTimeChartProps) {
   let symbol = 'OANDA:BTCUSD';
-  if (asset === 'XAU') symbol = 'OANDA:XAUUSD';
-  if (asset === 'EUR') symbol = 'OANDA:EURUSD';
-  if (asset === 'DXY') symbol = 'CAPITALCOM:DXY'; // OANDA doesn't have DXY
+  if (asset.includes('XAU')) symbol = 'OANDA:XAUUSD';
+  if (asset.includes('EUR')) symbol = 'OANDA:EURUSD';
+  if (asset.includes('DXY')) symbol = 'CAPITALCOM:DXY'; // OANDA doesn't have DXY
 
   // Map our timeframe to TradingView timeframe
   let tvTimeframe = '60'; // 1H default

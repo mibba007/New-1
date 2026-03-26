@@ -1,16 +1,96 @@
 import React, { useState } from 'react';
-import { Play, Plus, Save, Settings2, Trash2, Zap } from 'lucide-react';
+import { Play, Plus, Save, Settings2, Trash2, Zap, Loader2 } from 'lucide-react';
+import { generateMarketScan } from '../services/ai';
+
+interface Rule {
+  id: number;
+  type: 'condition' | 'action';
+  text: string;
+}
 
 export function StrategyBuilder() {
   const [strategyPrompt, setStrategyPrompt] = useState('');
-  const [rules, setRules] = useState([
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [notification, setNotification] = useState<string | null>(null);
+  const [rules, setRules] = useState<Rule[]>([
     { id: 1, type: 'condition', text: 'RSI (14) crosses below 30' },
     { id: 2, type: 'action', text: 'BUY 1 Standard Lot' },
     { id: 3, type: 'condition', text: 'MACD Signal crosses up' },
   ]);
 
+  const [isBacktesting, setIsBacktesting] = useState(false);
+  const [backtestResult, setBacktestResult] = useState<{
+    winRate: number;
+    totalTrades: number;
+    profitFactor: number;
+    netProfit: number;
+  } | null>(null);
+
+  const handleGenerateRules = async () => {
+    if (!strategyPrompt.trim()) return;
+    
+    setIsGenerating(true);
+    try {
+      const prompt = `Convert the following trading strategy description into a structured list of rules.
+      Strategy: "${strategyPrompt}"
+      
+      Return ONLY a JSON array of objects with this exact structure:
+      [
+        { "type": "condition" or "action", "text": "Clear description of the rule" }
+      ]`;
+
+      const response = await generateMarketScan(prompt);
+      const jsonMatch = response.match(/\[[\s\S]*\]/);
+      
+      if (jsonMatch) {
+        const parsedRules = JSON.parse(jsonMatch[0]);
+        const formattedRules = parsedRules.map((r: any, idx: number) => ({
+          id: Date.now() + idx,
+          type: r.type === 'action' ? 'action' : 'condition',
+          text: r.text
+        }));
+        setRules(formattedRules);
+        setBacktestResult(null); // Reset backtest on new rules
+      } else {
+        throw new Error("Failed to parse JSON array from response");
+      }
+    } catch (error) {
+      console.error("Failed to generate rules:", error);
+      setNotification("Failed to generate rules. Please try rephrasing your strategy.");
+      setTimeout(() => setNotification(null), 3000);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleBacktest = () => {
+    if (rules.length === 0) return;
+    setIsBacktesting(true);
+    
+    // Simulate backtest delay
+    setTimeout(() => {
+      setBacktestResult({
+        winRate: Math.floor(Math.random() * 30) + 45, // 45% - 75%
+        totalTrades: Math.floor(Math.random() * 200) + 50, // 50 - 250
+        profitFactor: +(Math.random() * 1.5 + 1.1).toFixed(2), // 1.1 - 2.6
+        netProfit: Math.floor(Math.random() * 10000) - 2000, // -2000 to 8000
+      });
+      setIsBacktesting(false);
+    }, 2000);
+  };
+
+  const removeRule = (id: number) => {
+    setRules(rules.filter(r => r.id !== id));
+  };
+
   return (
-    <div className="flex flex-col h-full gap-6">
+    <div className="flex flex-col h-full gap-6 relative">
+      {notification && (
+        <div className="absolute top-4 right-4 bg-red-500/90 text-white px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
+          <Zap className="w-4 h-4" />
+          {notification}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-zinc-100">AI Strategy Builder</h2>
@@ -20,8 +100,13 @@ export function StrategyBuilder() {
           <button className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-sm font-medium transition-colors">
             <Save className="w-4 h-4" /> Save
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors">
-            <Play className="w-4 h-4" /> Backtest
+          <button 
+            onClick={handleBacktest}
+            disabled={isBacktesting || rules.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isBacktesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            {isBacktesting ? 'Running...' : 'Backtest'}
           </button>
         </div>
       </div>
@@ -42,8 +127,13 @@ export function StrategyBuilder() {
             value={strategyPrompt}
             onChange={(e) => setStrategyPrompt(e.target.value)}
           />
-          <button className="w-full py-3 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2">
-            <Settings2 className="w-4 h-4" /> Generate Rules
+          <button 
+            onClick={handleGenerateRules}
+            disabled={isGenerating || !strategyPrompt.trim()}
+            className="w-full py-3 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Settings2 className="w-4 h-4" />}
+            {isGenerating ? 'Generating...' : 'Generate Rules'}
           </button>
         </div>
 
@@ -74,7 +164,10 @@ export function StrategyBuilder() {
                     </span>
                     <span className="text-sm text-zinc-300">{rule.text}</span>
                   </div>
-                  <button className="text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button 
+                    onClick={() => removeRule(rule.id)}
+                    className="text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -92,6 +185,35 @@ export function StrategyBuilder() {
               </div>
             </div>
           </div>
+
+          {/* Backtest Results Panel */}
+          {backtestResult && (
+            <div className="mt-6 p-5 bg-[#121212] border border-emerald-500/20 rounded-xl animate-in fade-in slide-in-from-bottom-4">
+              <h4 className="text-emerald-400 font-medium mb-4 flex items-center gap-2">
+                <Play className="w-4 h-4" /> Backtest Results (Simulated)
+              </h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-zinc-500">Win Rate</span>
+                  <span className="text-lg font-bold text-zinc-200">{backtestResult.winRate}%</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-zinc-500">Total Trades</span>
+                  <span className="text-lg font-bold text-zinc-200">{backtestResult.totalTrades}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-zinc-500">Profit Factor</span>
+                  <span className="text-lg font-bold text-zinc-200">{backtestResult.profitFactor}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-zinc-500">Net Profit</span>
+                  <span className={`text-lg font-bold ${backtestResult.netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    ${backtestResult.netProfit.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

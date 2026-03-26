@@ -31,11 +31,12 @@ export function AIChat() {
 
     const userMsg = input.trim();
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+    const newMessages = [...messages, { role: 'user', content: userMsg } as Message];
+    setMessages(newMessages);
     setIsLoading(true);
 
     try {
-      const response = await chatWithGemini(userMsg, useThinking, useFast);
+      const response = await chatWithGemini(newMessages, useThinking, useFast);
       setMessages(prev => [...prev, { role: 'ai', content: response }]);
     } catch (error: any) {
       setMessages(prev => [...prev, { role: 'ai', content: `Error: ${error.message}` }]);

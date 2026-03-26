@@ -18,7 +18,7 @@ export const generateMarketScan = async (query: string) => {
 };
 
 export const chatWithGemini = async (
-  message: string,
+  messages: { role: 'user' | 'ai'; content: string }[],
   useThinking: boolean,
   useFast: boolean
 ) => {
@@ -28,13 +28,24 @@ export const chatWithGemini = async (
     : "gemini-3.1-pro-preview";
   
   const config: any = {};
-  if (useThinking && !useFast) {
-    config.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
+
+  // Format history for Gemini
+  // Gemini chat expects user/model alternating, and the first message must be from the user.
+  let formattedContents = messages.map(msg => ({
+    role: msg.role === 'ai' ? 'model' : 'user',
+    parts: [{ text: msg.content }]
+  }));
+
+  if (formattedContents.length > 0 && formattedContents[0].role === 'model') {
+    formattedContents = [
+      { role: 'user', parts: [{ text: 'Hello' }] },
+      ...formattedContents
+    ];
   }
 
   const response = await ai.models.generateContent({
     model,
-    contents: message,
+    contents: formattedContents,
     config,
   });
   return response.text;

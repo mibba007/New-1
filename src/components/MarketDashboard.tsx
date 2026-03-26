@@ -4,6 +4,7 @@ import { generateMarketScan } from '../services/ai';
 import { AdvancedRealTimeChart } from './AdvancedRealTimeChart';
 import { TickerTape, MarketOverview } from 'react-ts-tradingview-widgets';
 import { ErrorBoundary } from './ErrorBoundary';
+import { useRealTimePrice } from '../hooks/useRealTimePrice';
 
 interface NewsItem {
   id: string;
@@ -29,6 +30,63 @@ interface PatternItem {
   explanation: string;
 }
 
+const MemoizedTickerTape = React.memo(() => (
+  <ErrorBoundary fallback={<div className="h-full flex items-center justify-center text-xs text-zinc-500">Failed to load ticker</div>}>
+    <TickerTape 
+      colorTheme="dark" 
+      displayMode="compact"
+      symbols={[
+        { proName: "OANDA:XAUUSD", title: "Gold" },
+        { proName: "OANDA:EURUSD", title: "EUR/USD" },
+        { proName: "OANDA:BTCUSD", title: "Bitcoin" },
+        { proName: "CAPITALCOM:DXY", title: "DXY" },
+        { proName: "OANDA:GBPUSD", title: "GBP/USD" },
+        { proName: "OANDA:USDJPY", title: "USD/JPY" },
+        { proName: "OANDA:SPX500USD", title: "S&P 500" }
+      ]}
+    />
+  </ErrorBoundary>
+));
+
+const MemoizedMarketOverview = React.memo(() => (
+  <ErrorBoundary fallback={<div className="h-full flex items-center justify-center text-xs text-zinc-500">Failed to load watchlist</div>}>
+    <MarketOverview 
+      colorTheme="dark" 
+      showFloatingTooltip
+      tabs={[
+        {
+          title: "Forex",
+          originalTitle: "Forex",
+          symbols: [
+            { s: "OANDA:EURUSD", d: "EUR/USD" },
+            { s: "OANDA:GBPUSD", d: "GBP/USD" },
+            { s: "OANDA:USDJPY", d: "USD/JPY" },
+            { s: "OANDA:AUDUSD", d: "AUD/USD" },
+            { s: "OANDA:USDCAD", d: "USD/CAD" }
+          ]
+        },
+        {
+          title: "Commodities",
+          originalTitle: "Commodities",
+          symbols: [
+            { s: "OANDA:XAUUSD", d: "Gold" },
+            { s: "OANDA:XAGUSD", d: "Silver" },
+            { s: "OANDA:WTICOUSD", d: "WTI Crude Oil" }
+          ]
+        },
+        {
+          title: "Crypto",
+          originalTitle: "Crypto",
+          symbols: [
+            { s: "OANDA:BTCUSD", d: "Bitcoin" },
+            { s: "OANDA:ETHUSD", d: "Ethereum" }
+          ]
+        }
+      ]}
+    />
+  </ErrorBoundary>
+));
+
 export function MarketDashboard() {
   const [scanResult, setScanResult] = useState<string>('');
   const [isScanning, setIsScanning] = useState(false);
@@ -42,6 +100,68 @@ export function MarketDashboard() {
   const [indicator, setIndicator] = useState('None');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+
+  const [sentimentData, setSentimentData] = useState<{score: number, sentiment: string, summary: string} | null>(null);
+  const [isFetchingSentiment, setIsFetchingSentiment] = useState(false);
+
+  const { price: livePrice } = useRealTimePrice(`${selectedAsset}/USD`);
+
+  const [patterns, setPatterns] = useState<PatternItem[]>([]);
+  const [isScanningPatterns, setIsScanningPatterns] = useState(false);
+
+  const fetchPatterns = async () => {
+    setIsScanningPatterns(true);
+    try {
+      // Fetch real market data first
+      let marketDataStr = "Real-time data unavailable.";
+      try {
+        const res = await fetch(`/api/market-data?symbol=${selectedAsset}&timeframe=${timeframe}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.data && data.data.length > 0) {
+            // Get the last 20 candles for the prompt to keep it concise
+            const recentCandles = data.data.slice(-20);
+            marketDataStr = JSON.stringify(recentCandles, null, 2);
+          }
+        }
+      } catch (e) {
+        console.error("Could not fetch real market data:", e);
+      }
+
+      const prompt = `You are an elite AI trading agent. Analyze the current real market data for ${selectedAsset} on ${timeframe} timeframe and identify up to 3 technical patterns. 
+      Here is the recent OHLCV data (last 20 candles):
+      ${marketDataStr}
+      
+      CRITICAL: Base your analysis ONLY on the provided OHLCV data. Do not hallucinate prices. Ensure entry, stopLoss, and takeProfit closely match the recent price action.
+      Return ONLY a JSON array of objects with this exact structure:
+      [
+        {
+          "id": "unique_string",
+          "asset": "${selectedAsset}",
+          "timeframe": "${timeframe}",
+          "pattern": "Pattern Name",
+          "category": "chart" or "candlestick",
+          "confidence": number between 0 and 100,
+          "target": number,
+          "type": "bullish" or "bearish",
+          "entry": number,
+          "stopLoss": number,
+          "takeProfit": number,
+          "explanation": "Brief explanation based on the provided OHLCV data"
+        }
+      ]`;
+      
+      const response = await generateMarketScan(prompt);
+      const jsonMatch = response.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        setPatterns(JSON.parse(jsonMatch[0]));
+      }
+    } catch (error) {
+      console.error("Failed to fetch patterns:", error);
+    } finally {
+      setIsScanningPatterns(false);
+    }
+  };
 
   const fetchComments = async () => {
     setIsFetchingComments(true);
@@ -57,58 +177,73 @@ export function MarketDashboard() {
     }
   };
 
+  const fetchSentiment = async () => {
+    setIsFetchingSentiment(true);
+    try {
+      const prompt = `Analyze the current real-time social media and news sentiment for ${selectedAsset}. 
+      Return ONLY a JSON object with this exact structure:
+      {
+        "score": 65,
+        "sentiment": "Bullish",
+        "summary": "Positive news regarding ETF inflows driving retail sentiment."
+      }
+      Score should be 0-100 (0=Extreme Bearish, 50=Neutral, 100=Extreme Bullish).`;
+      
+      const response = await generateMarketScan(prompt);
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        setSentimentData(JSON.parse(jsonMatch[0]));
+      }
+    } catch (error) {
+      console.error("Failed to fetch sentiment:", error);
+      setSentimentData({
+        score: 50,
+        sentiment: "Neutral",
+        summary: "Sentiment data currently unavailable."
+      });
+    } finally {
+      setIsFetchingSentiment(false);
+    }
+  };
+
   const fetchNews = async () => {
     setIsFetchingNews(true);
     try {
-      const response = await fetch('https://api.rss2json.com/v1/api.json?rss_url=https://finance.yahoo.com/news/rssindex');
-      const data = await response.json();
+      const prompt = `Generate 4 realistic, up-to-the-minute financial news headlines and short summaries (max 15 words) relevant to Forex, Crypto, and Commodities markets.
+      Return ONLY a JSON array of objects with this exact structure:
+      [
+        {
+          "headline": "Short headline",
+          "summary": "Brief summary",
+          "impact": "high", "medium", or "low",
+          "source": "Bloomberg", "Reuters", or "Financial Times"
+        }
+      ]`;
       
-      if (data.status === 'ok' && data.items) {
-        const fetchedNews = data.items.slice(0, 6).map((item: any, index: number) => {
-          const pubDate = new Date(item.pubDate);
-          const now = new Date();
-          const diffMs = Math.max(0, now.getTime() - pubDate.getTime());
-          const diffMins = Math.floor(diffMs / 60000);
-          const diffHours = Math.floor(diffMins / 60);
-          
-          let timeStr = 'Just now';
-          if (diffHours > 0) {
-            timeStr = `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-          } else if (diffMins > 0) {
-            timeStr = `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
-          }
-
-          let summaryText = item.description || item.title || '';
-          if (typeof summaryText !== 'string') {
-            summaryText = String(summaryText);
-          }
-          summaryText = summaryText.replace(/<[^>]*>?/gm, '');
-          if (summaryText.length > 120) {
-            summaryText = summaryText.substring(0, 117) + '...';
-          }
-
-          return {
-            id: `news-${index}-${Date.now()}`,
-            time: timeStr,
-            headline: item.title,
-            summary: summaryText,
-            impact: index % 3 === 0 ? 'high' : (index % 2 === 0 ? 'medium' : 'low'),
-            source: 'Yahoo Finance'
-          };
-        });
-        setNews(fetchedNews);
+      const response = await generateMarketScan(prompt);
+      const jsonMatch = response.match(/\[[\s\S]*\]/);
+      
+      if (jsonMatch) {
+        const parsedNews = JSON.parse(jsonMatch[0]);
+        const formattedNews = parsedNews.map((item: any, index: number) => ({
+          id: `news-${index}-${Date.now()}`,
+          time: index === 0 ? 'Just now' : `${index * 5 + Math.floor(Math.random() * 5)} mins ago`,
+          headline: item.headline,
+          summary: item.summary,
+          impact: item.impact || 'medium',
+          source: item.source || 'Reuters'
+        }));
+        setNews(formattedNews);
       } else {
-        throw new Error('Invalid data format');
+        throw new Error("Failed to parse news JSON");
       }
     } catch (error) {
       console.error('Failed to fetch news:', error);
       const mockHeadlines = [
         { id: 'news-1', time: 'Just now', headline: 'Global Equities Rally on Tech Earnings', summary: 'Major indices hit record highs following stronger-than-expected quarterly results from mega-cap tech firms.', impact: 'medium', source: 'Bloomberg' },
-        { id: 'news-2', time: '5 mins ago', headline: 'Oil Prices Stabilize After Inventory Draw', summary: 'WTI crude oil futures hold steady near $82/bbl as US crude inventories show a larger-than-expected drawdown.', impact: 'medium', source: 'Investing.com' },
+        { id: 'news-2', time: '5 mins ago', headline: 'Oil Prices Stabilize After Inventory Draw', summary: 'WTI crude oil futures hold steady near $82/bbl as US crude inventories show a larger-than-expected drawdown.', impact: 'medium', source: 'Reuters' },
         { id: 'news-3', time: '12 mins ago', headline: 'Fed Chair Signals Potential Rate Cut', summary: 'In a recent statement, the Fed Chair hinted at a possible 25bps rate cut in the upcoming meeting, citing cooling inflation.', impact: 'high', source: 'Bloomberg' },
-        { id: 'news-4', time: '28 mins ago', headline: 'Gold Surges Past $2,350', summary: 'Safe-haven demand pushes XAU/USD to new weekly highs amidst geopolitical tensions.', impact: 'high', source: 'Investing.com' },
-        { id: 'news-5', time: '45 mins ago', headline: 'ECB Maintains Current Interest Rates', summary: 'The European Central Bank decided to hold rates steady, matching market expectations. EUR/USD shows muted reaction.', impact: 'medium', source: 'Bloomberg' },
-        { id: 'news-6', time: '1 hour ago', headline: 'Bitcoin Consolidates Near $68K', summary: 'Crypto markets show lower volatility as BTC/USD trades in a tight range ahead of the upcoming options expiry.', impact: 'low', source: 'Investing.com' }
+        { id: 'news-4', time: '28 mins ago', headline: 'Gold Surges Past $2,350', summary: 'Safe-haven demand pushes XAU/USD to new weekly highs amidst geopolitical tensions.', impact: 'high', source: 'Financial Times' }
       ];
       setNews(mockHeadlines.sort(() => 0.5 - Math.random()).slice(0, 4));
     } finally {
@@ -170,69 +305,25 @@ Javobni professional markdown formatida, xuddi "Hedge Fund" menejerlari hisoboti
     return () => clearInterval(newsInterval);
   }, []);
 
-  const mockPatterns: PatternItem[] = [
-    { 
-      id: '1', asset: 'OANDA:XAUUSD', timeframe: 'H1', pattern: 'Bullish Flag', category: 'chart', confidence: 89, target: 2365.50, type: 'bullish',
-      entry: 2345.10, stopLoss: 2338.50, takeProfit: 2365.50,
-      explanation: 'Price consolidated in a downward channel after a strong impulse. Breakout above the upper trendline confirmed with volume.'
-    },
-    { 
-      id: '2', asset: 'OANDA:BTCUSD', timeframe: 'H4', pattern: 'MACD Divergence', category: 'chart', confidence: 94, target: 72000, type: 'bullish',
-      entry: 67800, stopLoss: 65500, takeProfit: 72000,
-      explanation: 'Price made a lower low while MACD histogram made a higher low, indicating waning bearish momentum and a potential reversal.'
-    },
-    { 
-      id: '3', asset: 'OANDA:EURUSD', timeframe: 'M15', pattern: 'Double Top', category: 'chart', confidence: 72, target: 1.0810, type: 'bearish',
-      entry: 1.0855, stopLoss: 1.0875, takeProfit: 1.0810,
-      explanation: 'Failed to break resistance at 1.0860 twice. Neckline breakdown at 1.0845 suggests further downside.'
-    },
-    { 
-      id: '4', asset: 'CAPITALCOM:DXY', timeframe: 'D1', pattern: 'Head & Shoulders', category: 'chart', confidence: 85, target: 102.50, type: 'bearish',
-      entry: 104.20, stopLoss: 104.80, takeProfit: 102.50,
-      explanation: 'Classic reversal pattern forming at the top of a multi-week uptrend. Right shoulder completed, awaiting neckline break.'
-    },
-    {
-      id: '5', asset: 'OANDA:GBPUSD', timeframe: 'H1', pattern: 'Bullish Engulfing', category: 'candlestick', confidence: 82, target: 1.2750, type: 'bullish',
-      entry: 1.2680, stopLoss: 1.2640, takeProfit: 1.2750,
-      explanation: 'Large bullish candle completely engulfed the previous bearish candle body at a key support level, signaling strong buying pressure.'
-    },
-    {
-      id: '6', asset: 'OANDA:USDJPY', timeframe: 'H4', pattern: 'Shooting Star', category: 'candlestick', confidence: 78, target: 150.20, type: 'bearish',
-      entry: 151.50, stopLoss: 152.10, takeProfit: 150.20,
-      explanation: 'Small real body with a long upper shadow formed after an extended uptrend, indicating rejection at resistance and potential reversal.'
-    },
-    {
-      id: '7', asset: 'OANDA:XAGUSD', timeframe: 'M30', pattern: 'Dragonfly Doji', category: 'candlestick', confidence: 75, target: 25.80, type: 'bullish',
-      entry: 25.20, stopLoss: 24.90, takeProfit: 25.80,
-      explanation: 'Open, high, and close are at the same level with a long lower shadow. Shows sellers pushed price down but buyers completely rejected the drop.'
-    }
-  ];
+  useEffect(() => {
+    fetchSentiment();
+  }, [selectedAsset]);
+
+  useEffect(() => {
+    fetchPatterns();
+  }, [selectedAsset, timeframe]);
 
   return (
     <div className="flex flex-col h-full bg-[#0a0a0a] text-zinc-300 overflow-hidden font-sans">
       
       {/* Ticker Tape */}
       <div className="h-12 bg-[#121212] border-b border-zinc-800/60 shrink-0">
-        <ErrorBoundary fallback={<div className="h-full flex items-center justify-center text-xs text-zinc-500">Failed to load ticker</div>}>
-          <TickerTape 
-            colorTheme="dark" 
-            displayMode="compact"
-            symbols={[
-              { proName: "OANDA:XAUUSD", title: "Gold" },
-              { proName: "OANDA:EURUSD", title: "EUR/USD" },
-              { proName: "OANDA:BTCUSD", title: "Bitcoin" },
-              { proName: "CAPITALCOM:DXY", title: "DXY" },
-              { proName: "OANDA:GBPUSD", title: "GBP/USD" },
-              { proName: "OANDA:USDJPY", title: "USD/JPY" },
-              { proName: "OANDA:SPX500USD", title: "S&P 500" }
-            ]}
-          />
-        </ErrorBoundary>
+        <MemoizedTickerTape />
       </div>
 
       {/* Main Terminal Grid */}
       <div className="flex-1 overflow-y-auto p-2 md:p-4">
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 h-full min-h-[800px]">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 h-full min-h-0">
           
           {/* LEFT COLUMN: Watchlist & Technicals */}
           <div className="xl:col-span-3 flex flex-col gap-4">
@@ -243,42 +334,7 @@ Javobni professional markdown formatida, xuddi "Hedge Fund" menejerlari hisoboti
                 <h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider">Watchlist (OANDA)</h3>
               </div>
               <div className="h-[calc(100%-45px)] w-full">
-                <ErrorBoundary fallback={<div className="h-full flex items-center justify-center text-xs text-zinc-500">Failed to load watchlist</div>}>
-                  <MarketOverview 
-                    colorTheme="dark" 
-                    showFloatingTooltip
-                    tabs={[
-                      {
-                        title: "Forex",
-                        originalTitle: "Forex",
-                        symbols: [
-                          { s: "OANDA:EURUSD", d: "EUR/USD" },
-                          { s: "OANDA:GBPUSD", d: "GBP/USD" },
-                          { s: "OANDA:USDJPY", d: "USD/JPY" },
-                          { s: "OANDA:AUDUSD", d: "AUD/USD" },
-                          { s: "OANDA:USDCAD", d: "USD/CAD" }
-                        ]
-                      },
-                      {
-                        title: "Commodities",
-                        originalTitle: "Commodities",
-                        symbols: [
-                          { s: "OANDA:XAUUSD", d: "Gold" },
-                          { s: "OANDA:XAGUSD", d: "Silver" },
-                          { s: "OANDA:WTICOUSD", d: "WTI Crude Oil" }
-                        ]
-                      },
-                      {
-                        title: "Crypto",
-                        originalTitle: "Crypto",
-                        symbols: [
-                          { s: "OANDA:BTCUSD", d: "Bitcoin" },
-                          { s: "OANDA:ETHUSD", d: "Ethereum" }
-                        ]
-                      }
-                    ]}
-                  />
-                </ErrorBoundary>
+                <MemoizedMarketOverview />
               </div>
             </div>
 
@@ -329,6 +385,11 @@ Javobni professional markdown formatida, xuddi "Hedge Fund" menejerlari hisoboti
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
                     <span className="text-lg font-black text-zinc-100">{selectedAsset}/USD</span>
+                    {livePrice && (
+                      <span className="text-sm font-mono text-emerald-400 ml-2">
+                        ${livePrice.toFixed(selectedAsset === 'XAU' || selectedAsset === 'BTC' ? 2 : 4)}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -376,69 +437,92 @@ Javobni professional markdown formatida, xuddi "Hedge Fund" menejerlari hisoboti
                 <div className="flex items-center gap-2">
                   <Cpu className="w-4 h-4 text-purple-400" />
                   <h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider">Auto Pattern Recognition</h3>
+                  <span className="ml-2 text-[9px] bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider border border-purple-500/30">Gemini Pro Agent</span>
                 </div>
-                <span className="flex h-2 w-2 relative">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
-                </span>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={fetchPatterns}
+                    disabled={isScanningPatterns}
+                    className="text-[10px] flex items-center gap-1 text-purple-400 hover:text-purple-300 disabled:opacity-50 uppercase tracking-wider font-bold"
+                  >
+                    {isScanningPatterns ? <RefreshCw className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                    Scan Real-Time Data
+                  </button>
+                  <span className="flex h-2 w-2 relative">
+                    <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${isScanningPatterns ? 'bg-purple-400 animate-ping' : 'bg-emerald-400'}`}></span>
+                    <span className={`relative inline-flex rounded-full h-2 w-2 ${isScanningPatterns ? 'bg-purple-500' : 'bg-emerald-500'}`}></span>
+                  </span>
+                </div>
               </div>
-              <div className="p-0 overflow-x-auto">
-                <table className="w-full text-left text-xs whitespace-nowrap">
-                  <thead className="bg-zinc-900/20 text-zinc-500 border-b border-zinc-800/60">
-                    <tr>
-                      <th className="px-4 py-2 font-semibold">Asset</th>
-                      <th className="px-4 py-2 font-semibold">Pattern</th>
-                      <th className="px-4 py-2 font-semibold">Confidence</th>
-                      <th className="px-4 py-2 font-semibold">Target</th>
-                      <th className="px-4 py-2 font-semibold">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800/50 text-zinc-300">
-                    {mockPatterns.map(p => (
-                      <React.Fragment key={p.id}>
-                        <tr className="hover:bg-zinc-800/20 transition-colors">
-                          <td className="px-4 py-3 font-bold flex items-center gap-2">
-                            {p.asset} <span className="text-[9px] px-1.5 py-0.5 bg-zinc-800 rounded text-zinc-400">{p.timeframe}</span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex flex-col gap-0.5">
-                              <span>{p.pattern}</span>
-                              <span className="text-[9px] text-zinc-500 uppercase tracking-wider">
-                                {p.category === 'candlestick' ? '🕯️ Candlestick' : '📉 Chart Pattern'}
+              <div className="p-0 overflow-x-auto flex-1">
+                {isScanningPatterns ? (
+                  <div className="flex flex-col items-center justify-center h-full p-8 text-zinc-500 gap-3">
+                    <RefreshCw className="w-6 h-6 animate-spin text-purple-500" />
+                    <p className="text-xs font-mono">AI Agent analyzing real-time OHLCV data...</p>
+                  </div>
+                ) : patterns.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full p-8 text-zinc-500 gap-2">
+                    <BrainCircuit className="w-8 h-8 opacity-20" />
+                    <p className="text-xs">No patterns detected. Click 'Scan Real-Time Data' to analyze current chart.</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-left text-xs whitespace-nowrap">
+                    <thead className="bg-zinc-900/20 text-zinc-500 border-b border-zinc-800/60">
+                      <tr>
+                        <th className="px-4 py-2 font-semibold">Asset</th>
+                        <th className="px-4 py-2 font-semibold">Pattern</th>
+                        <th className="px-4 py-2 font-semibold">Confidence</th>
+                        <th className="px-4 py-2 font-semibold">Target</th>
+                        <th className="px-4 py-2 font-semibold">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/50 text-zinc-300">
+                      {patterns.map(p => (
+                        <React.Fragment key={p.id}>
+                          <tr className="hover:bg-zinc-800/20 transition-colors">
+                            <td className="px-4 py-3 font-bold flex items-center gap-2">
+                              {p.asset} <span className="text-[9px] px-1.5 py-0.5 bg-zinc-800 rounded text-zinc-400">{p.timeframe}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-col gap-0.5">
+                                <span>{p.pattern}</span>
+                                <span className="text-[9px] text-zinc-500 uppercase tracking-wider">
+                                  {p.category === 'candlestick' ? '🕯️ Candlestick' : '📉 Chart Pattern'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                                  <div className={`h-full ${p.confidence > 85 ? 'bg-emerald-500' : 'bg-yellow-500'}`} style={{ width: `${p.confidence}%` }}></div>
+                                </div>
+                                <span className="font-mono text-[10px]">{p.confidence}%</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 font-mono font-bold">{p.target.toFixed(p.asset.includes('EUR') ? 4 : 2)}</td>
+                            <td className="px-4 py-3">
+                              <span className={`text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider ${p.type === 'bullish' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                                {p.type === 'bullish' ? 'BUY' : 'SELL'}
                               </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                                <div className={`h-full ${p.confidence > 85 ? 'bg-emerald-500' : 'bg-yellow-500'}`} style={{ width: `${p.confidence}%` }}></div>
+                            </td>
+                          </tr>
+                          <tr className="bg-zinc-900/30 border-b border-zinc-800/30">
+                            <td colSpan={5} className="px-4 py-2 text-[11px] text-zinc-400 whitespace-normal">
+                              <div className="flex flex-col gap-1.5">
+                                <div className="flex items-center gap-4 font-mono">
+                                  <span><span className="text-zinc-500">ENTRY:</span> {p.entry.toFixed(p.asset.includes('EUR') ? 4 : 2)}</span>
+                                  <span><span className="text-zinc-500">SL:</span> <span className="text-rose-400">{p.stopLoss.toFixed(p.asset.includes('EUR') ? 4 : 2)}</span></span>
+                                  <span><span className="text-zinc-500">TP:</span> <span className="text-emerald-400">{p.takeProfit.toFixed(p.asset.includes('EUR') ? 4 : 2)}</span></span>
+                                </div>
+                                <p className="italic text-zinc-500">{p.explanation}</p>
                               </div>
-                              <span className="font-mono text-[10px]">{p.confidence}%</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 font-mono font-bold">{p.target.toFixed(p.asset.includes('EUR') ? 4 : 2)}</td>
-                          <td className="px-4 py-3">
-                            <span className={`text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider ${p.type === 'bullish' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                              {p.type === 'bullish' ? 'BUY' : 'SELL'}
-                            </span>
-                          </td>
-                        </tr>
-                        <tr className="bg-zinc-900/30 border-b border-zinc-800/30">
-                          <td colSpan={5} className="px-4 py-2 text-[11px] text-zinc-400 whitespace-normal">
-                            <div className="flex flex-col gap-1.5">
-                              <div className="flex items-center gap-4 font-mono">
-                                <span><span className="text-zinc-500">ENTRY:</span> {p.entry.toFixed(p.asset.includes('EUR') ? 4 : 2)}</span>
-                                <span><span className="text-zinc-500">SL:</span> <span className="text-rose-400">{p.stopLoss.toFixed(p.asset.includes('EUR') ? 4 : 2)}</span></span>
-                                <span><span className="text-zinc-500">TP:</span> <span className="text-emerald-400">{p.takeProfit.toFixed(p.asset.includes('EUR') ? 4 : 2)}</span></span>
-                              </div>
-                              <p className="italic text-zinc-500">{p.explanation}</p>
-                            </div>
-                          </td>
-                        </tr>
-                      </React.Fragment>
-                    ))}
-                  </tbody>
-                </table>
+                            </td>
+                          </tr>
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
           </div>
@@ -480,6 +564,58 @@ Javobni professional markdown formatida, xuddi "Hedge Fund" menejerlari hisoboti
                   <div className="prose prose-invert prose-sm prose-emerald leading-relaxed whitespace-pre-wrap max-w-none">
                     {commentsResult || "No comments available."}
                   </div>
+                )}
+              </div>
+            </div>
+
+            {/* Social Sentiment */}
+            <div className="bg-[#121212] border border-zinc-800/60 rounded-xl shadow-lg overflow-hidden flex flex-col">
+              <div className="p-3 border-b border-zinc-800/60 bg-zinc-900/40 flex justify-between items-center">
+                <h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-2"><Activity className="w-4 h-4 text-purple-400"/> Social Sentiment ({selectedAsset})</h3>
+                <button onClick={fetchSentiment} disabled={isFetchingSentiment} className="text-zinc-500 hover:text-purple-400 transition-colors">
+                  <RefreshCw className={`w-3.5 h-3.5 ${isFetchingSentiment ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+              <div className="p-4 bg-[#0a0a0a] flex flex-col gap-3">
+                {isFetchingSentiment ? (
+                  <div className="flex items-center justify-center h-16 text-purple-500/50 font-medium text-xs">Analyzing social media & news...</div>
+                ) : sentimentData ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`text-2xl font-bold ${
+                          sentimentData.score > 60 ? 'text-emerald-400' : 
+                          sentimentData.score < 40 ? 'text-rose-400' : 'text-zinc-400'
+                        }`}>
+                          {sentimentData.score}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className={`text-xs font-bold uppercase ${
+                            sentimentData.score > 60 ? 'text-emerald-400' : 
+                            sentimentData.score < 40 ? 'text-rose-400' : 'text-zinc-400'
+                          }`}>{sentimentData.sentiment}</span>
+                          <span className="text-[10px] text-zinc-500">Real-time Score</span>
+                        </div>
+                      </div>
+                      
+                      {/* Gauge bar */}
+                      <div className="relative w-32 h-2 bg-zinc-800 rounded-full flex">
+                        <div className="h-full bg-rose-500/50 rounded-l-full" style={{ width: '40%' }}></div>
+                        <div className="h-full bg-zinc-500/50" style={{ width: '20%' }}></div>
+                        <div className="h-full bg-emerald-500/50 rounded-r-full" style={{ width: '40%' }}></div>
+                        {/* Indicator */}
+                        <div 
+                          className="absolute h-4 w-1 bg-white rounded-full -mt-1 shadow-sm transition-all duration-500"
+                          style={{ left: `calc(${sentimentData.score}% - 2px)` }}
+                        ></div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-zinc-400 leading-relaxed italic border-l-2 border-purple-500/30 pl-3">
+                      "{sentimentData.summary}"
+                    </p>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center h-16 text-zinc-500 text-xs">No sentiment data available.</div>
                 )}
               </div>
             </div>
