@@ -105,7 +105,7 @@ export function MultiAgentTerminal() {
               <div className="text-zinc-400 font-medium animate-pulse">Running Ensemble Analysis...</div>
             </div>
           ) : ensembleResult ? (
-            <>
+            <div className="flex flex-col items-center justify-center w-full h-full">
               <div className="w-48 h-48 rounded-full border-8 border-zinc-800 flex items-center justify-center relative mb-6">
                 <svg className="absolute inset-0 w-full h-full -rotate-90">
                   <circle 
@@ -157,7 +157,7 @@ export function MultiAgentTerminal() {
               >
                 Execute {ensembleResult.finalSignal !== 'NEUTRAL' ? ensembleResult.finalSignal : ''} Trade
               </button>
-            </>
+            </div>
           ) : (
             <div className="text-zinc-500">No analysis data available.</div>
           )}

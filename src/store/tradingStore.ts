@@ -53,6 +53,17 @@ interface TradingState {
 
 const INITIAL_BALANCE = 100000;
 
+// Helper to calculate PnL based on asset type
+const calculatePnL = (type: 'LONG' | 'SHORT', entry: number, current: number, size: number, pair: string) => {
+  let multiplier = 100000; // Default forex standard lot
+  if (pair.includes('XAU')) multiplier = 100; // Gold: 100 oz per lot
+  if (pair.includes('BTC')) multiplier = 1; // Crypto: 1 coin per lot
+  if (pair.includes('DXY')) multiplier = 1000; // Index multiplier
+
+  const diff = type === 'LONG' ? current - entry : entry - current;
+  return diff * size * multiplier;
+};
+
 export const useTradingStore = create<TradingState>()(
   persist(
     (set, get) => ({
@@ -95,10 +106,7 @@ export const useTradingStore = create<TradingState>()(
           const position = state.positions.find((p) => p.id === id);
           if (!position) return state;
 
-          const pnl = position.type === 'LONG' 
-            ? (currentPrice - position.entry) * position.size * 100000 // Simplified calc
-            : (position.entry - currentPrice) * position.size * 100000;
-            
+          const pnl = calculatePnL(position.type, position.entry, currentPrice, position.size, position.pair);
           const pnlPercent = (pnl / state.balance) * 100;
 
           const historyEntry: TradeHistory = {
@@ -131,19 +139,9 @@ export const useTradingStore = create<TradingState>()(
           const updatedPositions = state.positions.map((pos) => {
             const currentPrice = prices[pos.pair] || pos.current;
             
-            // Simplified PnL calculation for forex (assuming standard lots and USD quote)
-            const pnl = pos.type === 'LONG'
-              ? (currentPrice - pos.entry) * pos.size * 100000
-              : (pos.entry - currentPrice) * pos.size * 100000;
-              
+            const pnl = calculatePnL(pos.type, pos.entry, currentPrice, pos.size, pos.pair);
             const pnlPercent = (pnl / state.balance) * 100;
             totalUnrealizedPnl += pnl;
-
-            // Auto SL/TP check could go here
-            if (pos.stopLoss && (pos.type === 'LONG' ? currentPrice <= pos.stopLoss : currentPrice >= pos.stopLoss)) {
-                // Trigger SL (in a real app, this would dispatch an action or be handled asynchronously)
-                // For now, we just update the price
-            }
 
             return { ...pos, current: currentPrice, pnl, pnlPercent };
           });
@@ -156,7 +154,6 @@ export const useTradingStore = create<TradingState>()(
           
           if (drawdown >= state.riskParams.maxDailyDrawdown && !killSwitch) {
             killSwitch = true;
-            // In a real app, we would close all positions here
           }
 
           return {
@@ -178,7 +175,6 @@ export const useTradingStore = create<TradingState>()(
         if (state.positions.length >= state.riskParams.maxOpenPositions) {
           return { allowed: false, reason: 'Max open positions reached' };
         }
-        // Add more complex risk checks here (e.g., margin utilization, correlation)
         return { allowed: true };
       },
       

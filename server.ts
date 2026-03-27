@@ -82,10 +82,10 @@ async function startServer() {
         interval: interval
       };
 
-      const result = await yahooFinance.historical(yfSymbol, queryOptions as any);
+      const result = await yahooFinance.chart(yfSymbol, queryOptions as any);
       
       // Return last 100 candles to avoid huge payloads
-      const recentData = (result as any[]).slice(-100).map(d => ({
+      const recentData = (result as any).quotes.slice(-100).map((d: any) => ({
         date: d.date,
         open: d.open,
         high: d.high,

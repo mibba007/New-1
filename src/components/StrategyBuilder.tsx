@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Plus, Save, Settings2, Trash2, Zap, Loader2 } from 'lucide-react';
+import { Play, Plus, Save, Settings2, Trash2, Zap, Loader2, Calendar, DollarSign, Activity } from 'lucide-react';
 import { generateMarketScan } from '../services/ai';
 
 interface Rule {
@@ -17,6 +17,13 @@ export function StrategyBuilder() {
     { id: 2, type: 'action', text: 'BUY 1 Standard Lot' },
     { id: 3, type: 'condition', text: 'MACD Signal crosses up' },
   ]);
+
+  const [backtestParams, setBacktestParams] = useState({
+    startDate: '2023-01-01',
+    endDate: new Date().toISOString().split('T')[0],
+    initialCapital: 10000,
+    instrument: 'AAPL'
+  });
 
   const [isBacktesting, setIsBacktesting] = useState(false);
   const [backtestResult, setBacktestResult] = useState<{
@@ -69,11 +76,12 @@ export function StrategyBuilder() {
     
     // Simulate backtest delay
     setTimeout(() => {
+      const baseProfit = (Math.random() * 0.8 - 0.2) * backtestParams.initialCapital; // -20% to +60% return
       setBacktestResult({
         winRate: Math.floor(Math.random() * 30) + 45, // 45% - 75%
         totalTrades: Math.floor(Math.random() * 200) + 50, // 50 - 250
         profitFactor: +(Math.random() * 1.5 + 1.1).toFixed(2), // 1.1 - 2.6
-        netProfit: Math.floor(Math.random() * 10000) - 2000, // -2000 to 8000
+        netProfit: Math.floor(baseProfit),
       });
       setIsBacktesting(false);
     }, 2000);
@@ -112,29 +120,94 @@ export function StrategyBuilder() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
-        {/* Natural Language Input */}
-        <div className="lg:col-span-1 flex flex-col gap-4 bg-[#1a1a1a] border border-zinc-800 rounded-xl p-5">
-          <div className="flex items-center gap-2 text-emerald-400 font-medium mb-2">
-            <Zap className="w-5 h-5" />
-            <h3>Natural Language Input</h3>
+        {/* Left Column: Input & Parameters */}
+        <div className="lg:col-span-1 flex flex-col gap-6 overflow-y-auto pr-2">
+          {/* Natural Language Input */}
+          <div className="flex flex-col gap-4 bg-[#1a1a1a] border border-zinc-800 rounded-xl p-5">
+            <div className="flex items-center gap-2 text-emerald-400 font-medium mb-2">
+              <Zap className="w-5 h-5" />
+              <h3>Natural Language Input</h3>
+            </div>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Describe your strategy in plain English. The AI will automatically convert it into executable trading rules.
+            </p>
+            <textarea
+              className="w-full h-32 bg-[#121212] border border-zinc-800 rounded-lg p-4 text-sm text-zinc-200 focus:outline-none focus:border-emerald-500/50 resize-none"
+              placeholder="e.g., Buy when RSI is below 30 and MACD crosses up. Set stop loss at 1.5 ATR and take profit at 3 ATR."
+              value={strategyPrompt}
+              onChange={(e) => setStrategyPrompt(e.target.value)}
+            />
+            <button 
+              onClick={handleGenerateRules}
+              disabled={isGenerating || !strategyPrompt.trim()}
+              className="w-full py-3 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Settings2 className="w-4 h-4" />}
+              {isGenerating ? 'Generating...' : 'Generate Rules'}
+            </button>
           </div>
-          <p className="text-xs text-zinc-400 leading-relaxed">
-            Describe your strategy in plain English. The AI will automatically convert it into executable trading rules.
-          </p>
-          <textarea
-            className="flex-1 w-full bg-[#121212] border border-zinc-800 rounded-lg p-4 text-sm text-zinc-200 focus:outline-none focus:border-emerald-500/50 resize-none"
-            placeholder="e.g., Buy when RSI is below 30 and MACD crosses up. Set stop loss at 1.5 ATR and take profit at 3 ATR."
-            value={strategyPrompt}
-            onChange={(e) => setStrategyPrompt(e.target.value)}
-          />
-          <button 
-            onClick={handleGenerateRules}
-            disabled={isGenerating || !strategyPrompt.trim()}
-            className="w-full py-3 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Settings2 className="w-4 h-4" />}
-            {isGenerating ? 'Generating...' : 'Generate Rules'}
-          </button>
+
+          {/* Backtest Parameters */}
+          <div className="flex flex-col gap-4 bg-[#1a1a1a] border border-zinc-800 rounded-xl p-5">
+            <div className="flex items-center gap-2 text-blue-400 font-medium mb-2">
+              <Settings2 className="w-5 h-5" />
+              <h3>Backtest Parameters</h3>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-zinc-400 flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5" /> Instrument
+                </label>
+                <input
+                  type="text"
+                  value={backtestParams.instrument}
+                  onChange={(e) => setBacktestParams({ ...backtestParams, instrument: e.target.value.toUpperCase() })}
+                  className="w-full bg-[#121212] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500/50"
+                  placeholder="e.g., AAPL, BTC-USD"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-zinc-400 flex items-center gap-1.5">
+                  <DollarSign className="w-3.5 h-3.5" /> Initial Capital
+                </label>
+                <input
+                  type="number"
+                  value={backtestParams.initialCapital}
+                  onChange={(e) => setBacktestParams({ ...backtestParams, initialCapital: Number(e.target.value) })}
+                  className="w-full bg-[#121212] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500/50"
+                  min="100"
+                  step="1000"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-zinc-400 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5" /> Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={backtestParams.startDate}
+                    onChange={(e) => setBacktestParams({ ...backtestParams, startDate: e.target.value })}
+                    className="w-full bg-[#121212] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500/50"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-zinc-400 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5" /> End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={backtestParams.endDate}
+                    onChange={(e) => setBacktestParams({ ...backtestParams, endDate: e.target.value })}
+                    className="w-full bg-[#121212] border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-blue-500/50"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Rule Builder Canvas */}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, ArrowDownRight, ArrowUpRight, DollarSign, Percent, PieChart, ShieldAlert, TrendingUp, Settings, Trash2 } from 'lucide-react';
+import { Activity, ArrowDownRight, ArrowUpRight, DollarSign, PieChart, ShieldAlert, TrendingUp, Settings, Trash2 } from 'lucide-react';
 import { useTradingStore } from '../store/tradingStore';
 import { useRealTimePrice } from '../hooks/useRealTimePrice';
 
