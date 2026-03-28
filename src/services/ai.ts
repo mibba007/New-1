@@ -7,14 +7,28 @@ const getAI = () => {
   return new GoogleGenAI({ apiKey: key });
 };
 
-export const generateMarketScan = async (query: string) => {
+export const generateMarketScan = async (query: string, isJson: boolean = false, retries = 3): Promise<string | undefined> => {
   const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: query,
-    config: { tools: [{ googleSearch: {} }] },
-  });
-  return response.text;
+  const config: any = {};
+  if (isJson) {
+    config.responseMimeType = "application/json";
+  }
+  
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: query,
+        config,
+      });
+      return response.text;
+    } catch (error: any) {
+      console.error(`Gemini API Error (Attempt ${i + 1}/${retries}):`, error);
+      if (i === retries - 1) throw error;
+      // Exponential backoff
+      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, i)));
+    }
+  }
 };
 
 export const chatWithGemini = async (

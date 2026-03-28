@@ -37,9 +37,9 @@ export async function runGeminiAgent(asset: string, timeframe: string, data: any
   }`;
 
   try {
-    const response = await generateMarketScan(prompt);
+    const response = await generateMarketScan(prompt, true);
     // Attempt to parse JSON from the response
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    const jsonMatch = response?.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       return {
@@ -211,7 +211,7 @@ export async function runEnsembleAnalysis(asset: string, timeframe: string, data
 
   const consensusScore = Math.abs(normalizedScore) * 100;
 
-  const tradingPlan = `Ensemble consensus is ${finalSignal} with ${consensusScore.toFixed(1)}% confidence. 
+  const tradingPlan = `Ensemble consensus is ${finalSignal} with ${(consensusScore || 0).toFixed(1)}% confidence. 
   Gemini suggests ${gemini.signal}, Claude suggests ${claude.signal}. 
   Consider entry around current levels with strict risk management.`;
 

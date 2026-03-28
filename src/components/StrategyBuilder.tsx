@@ -46,8 +46,8 @@ export function StrategyBuilder() {
         { "type": "condition" or "action", "text": "Clear description of the rule" }
       ]`;
 
-      const response = await generateMarketScan(prompt);
-      const jsonMatch = response.match(/\[[\s\S]*\]/);
+      const response = await generateMarketScan(prompt, true);
+      const jsonMatch = response?.match(/\[[\s\S]*\]/);
       
       if (jsonMatch) {
         const parsedRules = JSON.parse(jsonMatch[0]);

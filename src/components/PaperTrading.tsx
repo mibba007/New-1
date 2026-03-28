@@ -98,21 +98,21 @@ export function PaperTrading() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard 
           title="Account Equity" 
-          value={`$${equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
+          value={`$${(equity || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
           icon={<DollarSign className="w-5 h-5 text-emerald-400" />} 
-          trend={`${((equity - 100000) / 100000 * 100).toFixed(2)}%`} 
+          trend={`${(((equity - 100000) / 100000 * 100) || 0).toFixed(2)}%`} 
           trendUp={equity >= 100000} 
         />
         <MetricCard 
           title="Open P&L" 
-          value={`${openPnl >= 0 ? '+' : ''}$${openPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
+          value={`${(openPnl || 0) >= 0 ? '+' : ''}$${(openPnl || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
           icon={<TrendingUp className="w-5 h-5 text-blue-400" />} 
-          trend={`${openPnlPercent >= 0 ? '+' : ''}${openPnlPercent.toFixed(2)}%`} 
-          trendUp={openPnl >= 0} 
+          trend={`${(openPnlPercent || 0) >= 0 ? '+' : ''}${(openPnlPercent || 0).toFixed(2)}%`} 
+          trendUp={(openPnl || 0) >= 0} 
         />
         <MetricCard 
           title="Margin Used" 
-          value={`${marginUsedPercent.toFixed(1)}%`} 
+          value={`${(marginUsedPercent || 0).toFixed(1)}%`} 
           icon={<PieChart className="w-5 h-5 text-purple-400" />} 
         />
         <MetricCard 
@@ -158,14 +158,14 @@ export function PaperTrading() {
                         </span>
                       </td>
                       <td className="px-4 py-4 text-zinc-300">{pos.size} Lots</td>
-                      <td className="px-4 py-4 text-zinc-400">{pos.entry.toFixed(4)}</td>
-                      <td className="px-4 py-4 text-zinc-200">{pos.current.toFixed(4)}</td>
+                      <td className="px-4 py-4 text-zinc-400">{(pos.entry || 0).toFixed(4)}</td>
+                      <td className="px-4 py-4 text-zinc-200">{(pos.current || 0).toFixed(4)}</td>
                       <td className="px-4 py-4 text-right">
-                        <div className={`font-bold flex items-center justify-end gap-1 ${pos.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                          {pos.pnl >= 0 ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
-                          ${Math.abs(pos.pnl).toFixed(2)}
+                        <div className={`font-bold flex items-center justify-end gap-1 ${(pos.pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {(pos.pnl || 0) >= 0 ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
+                          ${Math.abs(pos.pnl || 0).toFixed(2)}
                         </div>
-                        <div className="text-xs text-zinc-500">{pos.pnlPercent > 0 ? '+' : ''}{pos.pnlPercent.toFixed(2)}%</div>
+                        <div className="text-xs text-zinc-500">{(pos.pnlPercent || 0) > 0 ? '+' : ''}{(pos.pnlPercent || 0).toFixed(2)}%</div>
                       </td>
                       <td className="px-4 py-4 text-center">
                         <button 

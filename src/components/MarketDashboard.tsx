@@ -151,8 +151,8 @@ export function MarketDashboard() {
         }
       ]`;
       
-      const response = await generateMarketScan(prompt);
-      const jsonMatch = response.match(/\[[\s\S]*\]/);
+      const response = await generateMarketScan(prompt, true);
+      const jsonMatch = response?.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         setPatterns(JSON.parse(jsonMatch[0]));
       }
@@ -169,7 +169,7 @@ export function MarketDashboard() {
       const res = await generateMarketScan(
         "Provide 2-3 short AI analyst comments on the current market sentiment for XAU/USD, EUR/USD, BTC/USD, and DXY, focusing on short-term trading implications."
       );
-      setCommentsResult(res);
+      setCommentsResult(res || "Analyst comments currently unavailable.");
     } catch (error) {
       setCommentsResult("Analyst comments currently unavailable.");
     } finally {
@@ -189,8 +189,8 @@ export function MarketDashboard() {
       }
       Score should be 0-100 (0=Extreme Bearish, 50=Neutral, 100=Extreme Bullish).`;
       
-      const response = await generateMarketScan(prompt);
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      const response = await generateMarketScan(prompt, true);
+      const jsonMatch = response?.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         setSentimentData(JSON.parse(jsonMatch[0]));
       }
@@ -220,8 +220,8 @@ export function MarketDashboard() {
         }
       ]`;
       
-      const response = await generateMarketScan(prompt);
-      const jsonMatch = response.match(/\[[\s\S]*\]/);
+      const response = await generateMarketScan(prompt, true);
+      const jsonMatch = response?.match(/\[[\s\S]*\]/);
       
       if (jsonMatch) {
         const parsedNews = JSON.parse(jsonMatch[0]);
@@ -257,7 +257,7 @@ export function MarketDashboard() {
       const res = await generateMarketScan(
         "Provide a brief real-time market scan for XAU/USD, EUR/USD, BTC/USD, and DXY. Include current price and trend bias (BULLISH/BEARISH/NEUTRAL). Format as a clean markdown list."
       );
-      setScanResult(res);
+      setScanResult(res || "Market data feed currently unavailable. Retrying connection...");
     } catch (error) {
       setScanResult("Market data feed currently unavailable. Retrying connection...");
     } finally {
@@ -289,7 +289,7 @@ Tahlil quyidagilarni o'z ichiga olishi SHART (O'zbek tilida, professional treyde
 Javobni professional markdown formatida, xuddi "Hedge Fund" menejerlari hisobotidek taqdim eting.
       `;
       const res = await generateMarketScan(prompt);
-      setAnalysisResult(res);
+      setAnalysisResult(res || "Tahlil qilishda xatolik yuz berdi. Iltimos qayta urinib ko'ring.");
     } catch (error) {
       setAnalysisResult("Tahlil qilishda xatolik yuz berdi. Iltimos qayta urinib ko'ring.");
     } finally {
@@ -387,7 +387,7 @@ Javobni professional markdown formatida, xuddi "Hedge Fund" menejerlari hisoboti
                     <span className="text-lg font-black text-zinc-100">{selectedAsset}/USD</span>
                     {livePrice && (
                       <span className="text-sm font-mono text-emerald-400 ml-2">
-                        ${livePrice.toFixed(selectedAsset === 'XAU' || selectedAsset === 'BTC' ? 2 : 4)}
+                        ${(Number(livePrice) || 0).toFixed(selectedAsset === 'XAU' || selectedAsset === 'BTC' ? 2 : 4)}
                       </span>
                     )}
                   </div>
@@ -499,7 +499,7 @@ Javobni professional markdown formatida, xuddi "Hedge Fund" menejerlari hisoboti
                                 <span className="font-mono text-[10px]">{p.confidence}%</span>
                               </div>
                             </td>
-                            <td className="px-4 py-3 font-mono font-bold">{p.target.toFixed(p.asset.includes('EUR') ? 4 : 2)}</td>
+                            <td className="px-4 py-3 font-mono font-bold">{(p.target || 0).toFixed(p.asset.includes('EUR') ? 4 : 2)}</td>
                             <td className="px-4 py-3">
                               <span className={`text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider ${p.type === 'bullish' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
                                 {p.type === 'bullish' ? 'BUY' : 'SELL'}
@@ -510,9 +510,9 @@ Javobni professional markdown formatida, xuddi "Hedge Fund" menejerlari hisoboti
                             <td colSpan={5} className="px-4 py-2 text-[11px] text-zinc-400 whitespace-normal">
                               <div className="flex flex-col gap-1.5">
                                 <div className="flex items-center gap-4 font-mono">
-                                  <span><span className="text-zinc-500">ENTRY:</span> {p.entry.toFixed(p.asset.includes('EUR') ? 4 : 2)}</span>
-                                  <span><span className="text-zinc-500">SL:</span> <span className="text-rose-400">{p.stopLoss.toFixed(p.asset.includes('EUR') ? 4 : 2)}</span></span>
-                                  <span><span className="text-zinc-500">TP:</span> <span className="text-emerald-400">{p.takeProfit.toFixed(p.asset.includes('EUR') ? 4 : 2)}</span></span>
+                                  <span><span className="text-zinc-500">ENTRY:</span> {(p.entry || 0).toFixed(p.asset.includes('EUR') ? 4 : 2)}</span>
+                                  <span><span className="text-zinc-500">SL:</span> <span className="text-rose-400">{(p.stopLoss || 0).toFixed(p.asset.includes('EUR') ? 4 : 2)}</span></span>
+                                  <span><span className="text-zinc-500">TP:</span> <span className="text-emerald-400">{(p.takeProfit || 0).toFixed(p.asset.includes('EUR') ? 4 : 2)}</span></span>
                                 </div>
                                 <p className="italic text-zinc-500">{p.explanation}</p>
                               </div>
